@@ -27,14 +27,23 @@ func WithLocksTableName(table string) MigratorOption {
 	}
 }
 
+// WithApplyOnSuccess sets the migrator to only mark migrations as applied/unapplied
+// when their up/down is successful
+func WithApplyOnSuccess() MigratorOption {
+	return func(m *Migrator) {
+		m.applyOnSuccess = true
+	}
+}
+
 type Migrator struct {
 	db         *ch.DB
 	migrations *Migrations
 
 	ms MigrationSlice
 
-	table      string
-	locksTable string
+	table          string
+	locksTable     string
+	applyOnSuccess bool
 }
 
 func NewMigrator(db *ch.DB, migrations *Migrations, opts ...MigratorOption) *Migrator {
@@ -149,15 +158,22 @@ func (m *Migrator) Migrate(ctx context.Context, opts ...MigrationOption) (*Migra
 		migration := &group.Migrations[i]
 		migration.GroupID = group.ID
 
-		// Always mark migration as applied so the rollback has a chance to fix the database.
-		if err := m.MarkApplied(ctx, migration); err != nil {
-			return nil, err
-		}
-
-		if !cfg.nop && migration.Up != nil {
-			if err := migration.Up(ctx, m.db); err != nil {
+		var err error
+		if !cfg.nop || migration.Up != nil {
+			err = migration.Up(ctx, m.db)
+			// If the migration failed and we only apply on success, return error
+			if err != nil && m.applyOnSuccess {
 				return group, err
 			}
+		}
+
+		if applyErr := m.MarkApplied(ctx, migration); err != nil {
+			return group, applyErr
+		}
+
+		// If the migration failed, return error
+		if err != nil {
+			return group, err
 		}
 	}
 
@@ -186,15 +202,22 @@ func (m *Migrator) Rollback(ctx context.Context, opts ...MigrationOption) (*Migr
 	for i := len(lastGroup.Migrations) - 1; i >= 0; i-- {
 		migration := &lastGroup.Migrations[i]
 
-		// Always mark migration as unapplied to match migrate behavior.
-		if err := m.MarkUnapplied(ctx, migration); err != nil {
-			return nil, err
+		var err error
+		if !cfg.nop && migration.Down != nil {
+			err = migration.Down(ctx, m.db)
+			// If the rollback failed and we only mark unapplied on success, return error
+			if err != nil && m.applyOnSuccess {
+				return lastGroup, err
+			}
 		}
 
-		if !cfg.nop && migration.Down != nil {
-			if err := migration.Down(ctx, m.db); err != nil {
-				return nil, err
-			}
+		if unapplyErr := m.MarkUnapplied(ctx, migration); err != nil {
+			return lastGroup, unapplyErr
+		}
+
+		// If the rollback failed, return error
+		if err != nil {
+			return lastGroup, err
 		}
 	}
 
