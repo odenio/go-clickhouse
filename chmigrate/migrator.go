@@ -27,11 +27,11 @@ func WithLocksTableName(table string) MigratorOption {
 	}
 }
 
-// WithApplyOnSuccess sets the migrator to only mark migrations as applied/unapplied
+// WithMarkAppliedOnSuccess sets the migrator to only mark migrations as applied/unapplied
 // when their up/down is successful
-func WithApplyOnSuccess() MigratorOption {
+func WithMarkAppliedOnSuccess() MigratorOption {
 	return func(m *Migrator) {
-		m.applyOnSuccess = true
+		m.markAppliedOnSuccess = true
 	}
 }
 
@@ -41,9 +41,9 @@ type Migrator struct {
 
 	ms MigrationSlice
 
-	table          string
-	locksTable     string
-	applyOnSuccess bool
+	table                string
+	locksTable           string
+	markAppliedOnSuccess bool
 }
 
 func NewMigrator(db *ch.DB, migrations *Migrations, opts ...MigratorOption) *Migrator {
@@ -162,7 +162,7 @@ func (m *Migrator) Migrate(ctx context.Context, opts ...MigrationOption) (*Migra
 		if !cfg.nop || migration.Up != nil {
 			err = migration.Up(ctx, m.db)
 			// If the migration failed and we only apply on success, return error
-			if err != nil && m.applyOnSuccess {
+			if err != nil && m.markAppliedOnSuccess {
 				return group, err
 			}
 		}
@@ -206,7 +206,7 @@ func (m *Migrator) Rollback(ctx context.Context, opts ...MigrationOption) (*Migr
 		if !cfg.nop && migration.Down != nil {
 			err = migration.Down(ctx, m.db)
 			// If the rollback failed and we only mark unapplied on success, return error
-			if err != nil && m.applyOnSuccess {
+			if err != nil && m.markAppliedOnSuccess {
 				return lastGroup, err
 			}
 		}
