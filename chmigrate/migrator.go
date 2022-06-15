@@ -167,7 +167,7 @@ func (m *Migrator) Migrate(ctx context.Context, opts ...MigrationOption) (*Migra
 			}
 		}
 
-		if applyErr := m.MarkApplied(ctx, migration); err != nil {
+		if applyErr := m.MarkApplied(ctx, migration); applyErr != nil {
 			return group, applyErr
 		}
 
@@ -211,7 +211,7 @@ func (m *Migrator) Rollback(ctx context.Context, opts ...MigrationOption) (*Migr
 			}
 		}
 
-		if unapplyErr := m.MarkUnapplied(ctx, migration); err != nil {
+		if unapplyErr := m.MarkUnapplied(ctx, migration); unapplyErr != nil {
 			return lastGroup, unapplyErr
 		}
 
